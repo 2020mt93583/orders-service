@@ -1,5 +1,7 @@
 import requests
 import time
+import os
+
 from fastapi import FastAPI
 from fastapi.background import BackgroundTasks
 from redis_om import get_redis_connection, HashModel
@@ -8,9 +10,9 @@ from starlette.requests import Request
 app = FastAPI()
 
 redis = get_redis_connection(
-    host="localhost",
+    host=os.environ['orders-db-name'],
     port=6379,
-    password="eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81",
+    password=os.environ['orders-db-pass'],
     decode_responses=True
 )
 
@@ -34,18 +36,22 @@ def get(pk: str):
     return Order.get(pk)
 
 
+INVENTORY_SERVICE_URL = 'http://' + os.environ['inventory-service-url']
+USERS_SERVICE_URL = 'http://' + os.environ['users-service-url']
+
+
 @app.post('/orders')
 async def create(request: Request, background_tasks: BackgroundTasks):  # id, quantity
     body = await request.json()
 
-    req = requests.get('http://localhost:8000/products/%s' % body['id'])
+    req = requests.get(INVENTORY_SERVICE_URL + '/products/%s' % body['productId'])
     product = req.json()
 
-    user_req = requests.get('http://localhost:8002/users/%s' % body['userId'])
+    user_req = requests.get(USERS_SERVICE_URL + '/users/%s' % body['userId'])
     user = user_req.json()
 
     order = Order(
-        product_id=body['id'],
+        product_id=body['productId'],
         user_id=body['userId'],
         billing_address=user['address'],
         price=product['price'],
@@ -62,7 +68,7 @@ async def create(request: Request, background_tasks: BackgroundTasks):  # id, qu
 
 
 def complete_order(order: Order):
-    time.sleep(5)
+    time.sleep(10)
     order.status = 'completed'
     order.save()
     redis.xadd('order_completed', order.dict(), '*')

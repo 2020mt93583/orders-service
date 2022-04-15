@@ -1,17 +1,27 @@
-from main import redis, Order
+import os
 import time
+
+from main import Order
+from redis_om import get_redis_connection
 
 key = 'refund_order'
 group = 'payment-group'
 
+eventq = get_redis_connection(
+    host=os.environ['eventq-host-name'],
+    port=6379,
+    password=os.environ['eventq-pass'],
+    decode_responses=True
+)
+
 try:
-    redis.xgroup_create(key, group)
+    eventq.xgroup_create(key, group)
 except:
     print('Group already exists!')
 
 while True:
     try:
-        results = redis.xreadgroup(group, key, {key: '>'}, None)
+        results = eventq.xreadgroup(group, key, {key: '>'}, None)
 
         if results:
             print(results)
